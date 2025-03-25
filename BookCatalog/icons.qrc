@@ -1,0 +1,7 @@
+<RCC>
+    <qresource prefix="/new/prefix1">
+        <file>img/exit-svgrepo-com.svg</file>
+        <file>img/export-svgrepo-com.svg</file>
+        <file>img/import-svgrepo-com.svg</file>
+    </qresource>
+</RCC>
