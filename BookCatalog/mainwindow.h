@@ -3,6 +3,7 @@
 #include <QMainWindow>
 #include <QStandardItemModel>
 #include <QSortFilterProxyModel>
+#include <QComboBox>
 
 QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
@@ -24,12 +25,15 @@ private slots:
     void importCSV();
     void exportCSV();
 
+    void importJSON();
+    void exportJSON();
+
 private:
     Ui::MainWindow *ui;
     QStandardItemModel *model;
     QSortFilterProxyModel *proxyModel;
     void setupModel();
     void setupSearch();
+    int getColumnIndex(const QString &columnTitle) const;
 };
 #endif // MAINWINDOW_H
-
