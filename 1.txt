@@ -1,54 +1,96 @@
-#ifndef EDITBOOKDIALOG_H
-#define EDITBOOKDIALOG_H
-
-#include <QDialog>
+#include "editbookdialog.h"
+#include <QFormLayout>
+#include <QMessageBox>
+#include <QDate>
 #include <QLineEdit>
-#include <QSpinBox>
-#include <QDialogButtonBox>
-#include <QVBoxLayout>
-#include <QLabel>
-#include <QDateEdit>
-#include <QEvent> // Add QEvent
+#include <QKeyEvent> // Add QKeyEvent
 
-class EditBookDialog : public QDialog
+EditBookDialog::EditBookDialog(QWidget *parent)
+    : QDialog(parent)
 {
-    Q_OBJECT
+    setupUi();
+    connect(buttonBox, &QDialogButtonBox::accepted, this, &EditBookDialog::on_buttonBox_accepted);
+    connect(buttonBox, &QDialogButtonBox::rejected, this, &QDialog::reject);
+}
 
-public:
-    explicit EditBookDialog(QWidget *parent = nullptr);
-    ~EditBookDialog();
+EditBookDialog::~EditBookDialog()
+{
+}
 
-    QString getAuthor() const;
-    QString getTitle() const;
-    QDate getPublishDate() const;
-    QString getGenre() const;
-    QString getPublisher() const;
-    QString getISBN() const;
-    int getPageCount() const;
+void EditBookDialog::setupUi()
+{
+    QVBoxLayout *mainLayout = new QVBoxLayout(this);
+    QFormLayout *formLayout = new QFormLayout();
 
-    void setBookData(const QString &author, const QString &title, const QDate &publishDate, const QString &genre,
-                     const QString &publisher, const QString &isbn, int pageCount);
+    authorLineEdit = new QLineEdit();
+    titleLineEdit = new QLineEdit();
+    publishDateEdit = new QDateEdit();
+    genreLineEdit = new QLineEdit();
+    publisherLineEdit = new QLineEdit();
+    isbnLineEdit = new QLineEdit();
+    pageCountSpinBox = new QSpinBox();
 
-protected:
-    // Override eventFilter to intercept events
-    bool eventFilter(QObject *watched, QEvent *event) override;
+    // Настройка QDateEdit
+    publishDateEdit->setCalendarPopup(true);
+    publishDateEdit->setDisplayFormat("yyyy-MM-dd");
+    publishDateEdit->setDate(QDate::currentDate());
 
-private slots:
-    void on_buttonBox_accepted();
+    // *** Отключаем кнопки-стрелки ***
+    publishDateEdit->setButtonSymbols(QAbstractSpinBox::NoButtons);
 
-private:
-    QLineEdit *authorLineEdit;
-    QLineEdit *titleLineEdit;
-    QDateEdit *publishDateEdit;
-    QLineEdit *genreLineEdit;
-    QLineEdit *publisherLineEdit;
-    QLineEdit *isbnLineEdit;
-    QSpinBox *pageCountSpinBox;
+    // *** Устанавливаем event filter на внутренний QLineEdit для блокировки клавиатурного ввода ***
+    if (publishDateEdit->lineEdit()) {
+        publishDateEdit->lineEdit()->installEventFilter(this);
+        // Можно также явно установить ему фокус policy, который не принимает фокус от Tab или мыши,
+        // но это может повлиять на доступность. Event filter более целенаправлен.
+        // publishDateEdit->lineEdit()->setFocusPolicy(Qt::NoFocus);
+    }
 
-    QDialogButtonBox *buttonBox;
 
-    void setupUi();
-    bool validateInput();
-};
+    // Настройка QSpinBox для количества страниц
+    pageCountSpinBox->setRange(0, 10000);
 
-#endif // EDITBOOKDIALOG_H
+    // Добавление виджетов в слой формы с соответствующими метками
+    formLayout->addRow("Автор:", authorLineEdit);
+    formLayout->addRow("Название:", titleLineEdit);
+    formLayout->addRow("Дата издания:", publishDateEdit);
+    formLayout->addRow("Жанр:", genreLineEdit);
+    formLayout->addRow("Издательство:", publisherLineEdit);
+    formLayout->addRow("ISBN:", isbnLineEdit);
+    formLayout->addRow("Количество страниц:", pageCountSpinBox);
+
+    // Создание стандартных кнопок OK и Cancel
+    buttonBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
+
+    // Добавление слоев в основной слой диалога
+    mainLayout->addLayout(formLayout);
+    mainLayout->addWidget(buttonBox);
+
+    setLayout(mainLayout);
+    setWindowTitle("Редактировать книгу");
+}
+
+// Реализация eventFilter для блокировки клавиатурного ввода в QDateEdit's lineEdit
+bool EditBookDialog::eventFilter(QObject *watched, QEvent *event)
+{
+    // Проверяем, что событие предназначено для lineEdit внутри publishDateEdit
+    if (watched == publishDateEdit->lineEdit()) {
+        // Если событие - это нажатие клавиши
+        if (event->type() == QEvent::KeyPress) {
+            // Преобразуем событие к типу QKeyEvent
+            QKeyEvent *keyEvent = static_cast<QKeyEvent *>(event);
+            // Отладочное сообщение:qDebug() << "Intercepted key press:" << keyEvent->key();
+
+            // Возвращаем true, чтобы "потребить" (игнорировать) событие.
+            // Это предотвратит ввод текста в QLineEdit.
+            return true;
+        }
+        // Можно также перехватить QEvent::Wheel для отключения изменения даты с помощью колеса мыши
+        // if (event->type() == QEvent::Wheel) {
+        //     return true; // Consume wheel event
+        // }
+    }
+
+    // Для всех остальных объектов и типов событий, передаем событие дальше для обычной обработки
+    return QDialog::eventFilter(watched, event);
+}
