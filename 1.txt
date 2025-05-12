@@ -1,41 +1,126 @@
-#ifndef BOOKSORTFILTERPROXYMODEL_H
-#define BOOKSORTFILTERPROXYMODEL_H
+#include "booksortfilterproxymodel.h"
+#include <QStandardItemModel>
+#include <QDebug>
 
-#include <QSortFilterProxyModel>
-#include <QModelIndex>
-#include <QVariant>
-#include <QString>
-#include <QStandardItemModel> // Нужен для доступа к данным исходной модели
-#include <QDate> // Нужен для работы с датой
-
-class BookSortFilterProxyModel : public QSortFilterProxyModel
+BookSortFilterProxyModel::BookSortFilterProxyModel(QObject *parent)
+    : QSortFilterProxyModel(parent),
+      m_filterColumn1(-1), // -1 означает поиск по всем столбцам
+      m_filterColumn2(-1)
 {
-    Q_OBJECT
+    // Case sensitivity по умолчанию Qt::CaseInsensitive уже установлен
+}
 
-public:
-    explicit BookSortFilterProxyModel(QObject *parent = nullptr);
+// Вспомогательная функция для получения индекса столбца исходной модели
+int BookSortFilterProxyModel::getSourceColumnIndex(const QString &columnTitle) const
+{
+    const QStandardItemModel *sourceModel = qobject_cast<const QStandardItemModel *>(this->sourceModel());
+    if (!sourceModel) return -1;
 
-    // Сеттеры для установки критериев поиска из двух наборов полей
-    void setFilterCriteria1(const QString &searchText, int column);
-    void setFilterCriteria2(const QString &searchText, int column);
+    for (int i = 0; i < sourceModel->columnCount(); ++i) {
+        if (sourceModel->headerData(i, Qt::Horizontal).toString() == columnTitle) {
+            return i;
+        }
+    }
+    return -1; // Столбец не найден
+}
 
-    // Вспомогательная функция для получения индекса столбца по его названию
-    // (нужна внутри proxy model для обработки специфичных столбцов, например, даты)
-    int getSourceColumnIndex(const QString &columnTitle) const;
 
+void BookSortFilterProxyModel::setFilterCriteria1(const QString &searchText, int column)
+{
+    m_searchText1 = searchText;
+    m_filterColumn1 = column;
+    invalidateFilter(); // Инициировать повторную фильтрацию
+}
 
-protected:
-    // Переопределяем этот метод для реализации кастомной логики фильтрации
-    bool filterAcceptsRow(int sourceRow, const QModelIndex &sourceParent) const override;
+void BookSortFilterProxyModel::setFilterCriteria2(const QString &searchText, int column)
+{
+    m_searchText2 = searchText;
+    m_filterColumn2 = column;
+    invalidateFilter(); // Инициировать повторную фильтрацию
+}
 
-private:
-    QString m_searchText1;
-    int m_filterColumn1;
-    QString m_searchText2;
-    int m_filterColumn2;
+bool BookSortFilterProxyModel::filterAcceptsRow(int sourceRow, const QModelIndex &sourceParent) const
+{
+    // Получаем указатель на исходную модель
+    const QStandardItemModel *sourceModel = qobject_cast<const QStandardItemModel *>(this->sourceModel());
+    if (!sourceModel) {
+        // Если исходная модель недоступна или не QStandardItemModel,
+        // считаем, что строка подходит (или можно вернуть false в зависимости от логики)
+        return true;
+    }
 
-    // Вспомогательная функция для проверки, соответствует ли элемент критерию
-    bool itemMatches(const QVariant &itemData, const QString &searchText, int column, const QStandardItemModel *sourceModel) const;
-};
+    bool passesFilter1 = true; // По умолчанию строка проходит первый фильтр, если searchText1 пустой
+    bool passesFilter2 = true; // По умолчанию строка проходит второй фильтр, если searchText2 пустой
 
-#endif // BOOKSORTFILTERPROXYMODEL_H
+    // Применяем Критерий Фильтра 1
+    if (!m_searchText1.isEmpty()) {
+        passesFilter1 = false; // Если есть текст поиска, предполагаем, что строка не проходит, пока не найдем совпадение
+        if (m_filterColumn1 == -1) { // Поиск по всем столбцам для критерия 1
+            for (int col = 0; col < sourceModel->columnCount(); ++col) {
+                QStandardItem *item = sourceModel->item(sourceRow, col);
+                if (item && itemMatches(item->data(Qt::DisplayRole), m_searchText1, col, sourceModel)) {
+                    passesFilter1 = true;
+                    break; // Найдено совпадение хотя бы в одном столбце
+                }
+            }
+        } else { // Поиск по конкретному столбцу для критерия 1
+             QStandardItem *item = sourceModel->item(sourceRow, m_filterColumn1);
+             if (item && itemMatches(item->data(Qt::DisplayRole), m_searchText1, m_filterColumn1, sourceModel)) {
+                 passesFilter1 = true;
+             }
+        }
+    }
+
+    // Применяем Критерий Фильтра 2
+    if (!m_searchText2.isEmpty()) {
+         passesFilter2 = false; // Если есть текст поиска, предполагаем, что строка не проходит, пока не найдем совпадение
+        if (m_filterColumn2 == -1) { // Поиск по всем столбцам для критерия 2
+            for (int col = 0; col < sourceModel->columnCount(); ++col) {
+                 QStandardItem *item = sourceModel->item(sourceRow, col);
+                if (item && itemMatches(item->data(Qt::DisplayRole), m_searchText2, col, sourceModel)) {
+                    passesFilter2 = true;
+                    break; // Найдено совпадение хотя бы в одном столбце
+                }
+            }
+        } else { // Поиск по конкретному столбцу для критерия 2
+             QStandardItem *item = sourceModel->item(sourceRow, m_filterColumn2);
+             if (item && itemMatches(item->data(Qt::DisplayRole), m_searchText2, m_filterColumn2, sourceModel)) {
+                 passesFilter2 = true;
+             }
+        }
+    }
+
+    // Объединяем результаты фильтров по логике И (AND):
+    // Строка проходит фильтр, только если она прошла и первый критерий (если активен),
+    // и второй критерий (если активен).
+    return passesFilter1 && passesFilter2;
+}
+
+bool BookSortFilterProxyModel::itemMatches(const QVariant &itemData, const QString &searchText, int column, const QStandardItemModel *sourceModel) const
+{
+     if (searchText.isEmpty()) {
+         return true; // Пустой текст поиска соответствует любому элементу
+     }
+
+     // Для столбца "Год" (где хранится дата "yyyy-MM-dd")
+     if (sourceModel && sourceModel->headerData(column, Qt::Horizontal).toString() == "Год") {
+         // Позволяем искать по году или части полной даты
+         QString itemText = itemData.toString();
+         // Можем добавить более сложную логику парсинга даты, если нужно
+         if (filterCaseSensitivity() == Qt::CaseInsensitive) {
+             itemText = itemText.toLower();
+         }
+         return itemText.contains(searchText, filterCaseSensitivity());
+
+     } else {
+         // Для остальных столбцов просто выполняем строковый поиск
+         QString itemText = itemData.toString();
+
+         if (filterCaseSensitivity() == Qt::CaseInsensitive) {
+             itemText = itemText.toLower();
+             // searchText.toLower(); // QString::contains с флагом Qt::CaseInsensitive обрабатывает регистр
+         }
+
+         return itemText.contains(searchText, filterCaseSensitivity());
+     }
+}
