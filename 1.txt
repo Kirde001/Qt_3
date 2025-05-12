@@ -1,5 +1,6 @@
-/home/user/BookCatalog/editbookdialog.cpp:40: ошибка: ‘QLineEdit* QAbstractSpinBox::lineEdit() const’ is protected within this context
-/home/user/BookCatalog/editbookdialog.cpp: In member function ‘void EditBookDialog::setupUi()’:
-/home/user/BookCatalog/editbookdialog.cpp:40:34: error: ‘QLineEdit* QAbstractSpinBox::lineEdit() const’ is protected within this context
-   40 |     if (publishDateEdit->lineEdit()) { // Проверяем, что lineEdit существует
-      |         ~~~~~~~~~~~~~~~~~~~~~~~~~^~
+// *** Отключаем кнопки-стрелки и прямой ввод текста, сохраняя календарь ***
+    publishDateEdit->setButtonSymbols(QAbstractSpinBox::NoButtons); // Отключаем кнопки-стрелки
+    // Получаем внутренний QLineEdit и устанавливаем его только для чтения
+    if (publishDateEdit->lineEdit()) { // Проверяем, что lineEdit существует
+        publishDateEdit->lineEdit()->setReadOnly(true);
+    }
