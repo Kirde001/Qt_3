@@ -1,58 +1,568 @@
-#ifndef MAINWINDOW_H
-#define MAINWINDOW_H
-
-#include <QMainWindow>
-#include <QStandardItemModel>
-// #include <QSortFilterProxyModel> // Заменяем на нашу кастомную модель
+#include "mainwindow.h"
+#include "./ui_mainwindow.h" // Включаем сгенерированный заголовочный файл UI
+#include "editbookdialog.h" // Включаем заголовок диалога редактирования/добавления
 #include "booksortfilterproxymodel.h" // Включаем заголовок нашей кастомной прокси-модели
-#include <QComboBox> // Для комбобокса выбора поля поиска
-#include <QLineEdit> // Для поля ввода текста поиска
+
+#include <QInputDialog> // Использовался ранее, возможно, больше не нужен, но оставлен на всякий случай
+#include <QMessageBox> // Для вывода информационных и предупреждающих сообщений
+#include <QFileDialog> // Для диалогов открытия/сохранения файлов
+#include <QTextStream> // Для работы с текстовыми потоками при чтении/записи файлов
+
+// Включения для работы с JSON
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonArray>
+#include <QJsonValue>
+
+#include <QDebug> // Для отладочных сообщений
 #include <QDate> // Для работы с QDate
+#include <QDateEdit> // Для работы с QDateEdit (хотя сам виджет в UI)
+
+// Для сортировки по клику на заголовок таблицы
+#include <QHeaderView>
 
 
-QT_BEGIN_NAMESPACE
-namespace Ui { class MainWindow; }
-QT_END_NAMESPACE
-
-// Объявление класса диалогового окна для редактирования/добавления
-class EditBookDialog;
-
-class MainWindow : public QMainWindow
+MainWindow::MainWindow(QWidget *parent)
+    : QMainWindow(parent)
+    , ui(new Ui::MainWindow) // Создаем объект UI
 {
-    Q_OBJECT
+    ui->setupUi(this); // Настраиваем пользовательский интерфейс
 
-public:
-    MainWindow(QWidget *parent = nullptr);
-    ~MainWindow();
+    setupModel(); // Настраиваем модель данных и прокси-модель
+    setupSearch(); // Настраиваем элементы управления поиском
 
-private slots:
-    // Слоты для кнопок управления данными
-    void addBook();
-    void editBook();
-    void removeBook();
-    // Слот для общей кнопки поиска
-    void searchBooks();
+    // Подключение сигналов к слотам
+    connect(ui->btnAdd, &QPushButton::clicked, this, &MainWindow::addBook);
+    connect(ui->btnEdit, &QPushButton::clicked, this, &MainWindow::editBook);
+    connect(ui->btnRemove, &QPushButton::clicked, this, &MainWindow::removeBook);
+    // Общая кнопка поиска подключена к слоту searchBooks
+    connect(ui->searchButton, &QPushButton::clicked, this, &MainWindow::searchBooks);
 
-    // Слоты для действий меню Импорт/Экспорт
-    void importCSV();
-    void exportCSV();
-    void importJSON();
-    void exportJSON();
+    // Подключение действий меню
+    connect(ui->actionImportCSV, &QAction::triggered, this, &MainWindow::importCSV);
+    connect(ui->actionExportCSV, &QAction::triggered, this, &MainWindow::exportCSV);
+    connect(ui->actionImportJSON, &QAction::triggered, this, &MainWindow::importJSON);
+    connect(ui->actionExportJSON, &QAction::triggered, this, &MainWindow::exportJSON);
+    connect(ui->actionExit, &QAction::triggered, this, &QApplication::quit); // Выход из приложения
+}
 
-private:
-    Ui::MainWindow *ui; // Указатель на объект UI, сгенерированный из .ui файла
-    QStandardItemModel *model; // Модель данных для хранения списка книг
-    // QSortFilterProxyModel *proxyModel; // Заменяем тип на наш кастомный
-    BookSortFilterProxyModel *proxyModel; // Кастомная прокси-модель для фильтрации и сортировки
+// Деструктор класса главного окна
+MainWindow::~MainWindow()
+{
+    delete ui; // Освобождаем память, выделенную для объекта UI
+    // Модели model и proxyModel являются дочерними объектами (this),
+    // поэтому они будут удалены автоматически при удалении MainWindow.
+}
 
-    // Объявления приватных методов
-    void setupModel(); // Настройка модели данных
-    void setupSearch(); // Настройка элементов управления поиском
+// Метод для настройки модели данных и прокси-модели
+void MainWindow::setupModel()
+{
+    // Создаем исходную модель данных QStandardItemModel
+    model = new QStandardItemModel(this);
+    // Устанавливаем количество столбцов и их заголовки
+    model->setColumnCount(7);
+    model->setHeaderData(0, Qt::Horizontal, "Автор");
+    model->setHeaderData(1, Qt::Horizontal, "Название");
+    model->setHeaderData(2, Qt::Horizontal, "Год"); // Заголовок столбца остается "Год"
+    model->setHeaderData(3, Qt::Horizontal, "Жанр");
+    model->setHeaderData(4, Qt::Horizontal, "Издательство");
+    model->setHeaderData(5, Qt::Horizontal, "ISBN");
+    model->setHeaderData(6, Qt::Horizontal, "Страниц");
 
-    // Вспомогательная функция для получения индекса столбца по его названию заголовка
-    int getColumnIndex(const QString &columnTitle) const;
+    // Создаем нашу кастомную прокси-модель для поддержки двух критериев поиска
+    proxyModel = new BookSortFilterProxyModel(this);
+    // Устанавливаем исходную модель для прокси-модели
+    proxyModel->setSourceModel(model);
+    // Устанавливаем регистронезависимый поиск по умолчанию
+    proxyModel->setFilterCaseSensitivity(Qt::CaseInsensitive);
+    // Настройка фильтрации (setFilterKeyColumn/setFilterFixedString)
+    // будет выполняться в searchBooks через методы custom proxy model
 
-    // Вспомогательная функция для заполнения комбобоксов поиска
-    void populateSearchComboBox(QComboBox *comboBox);
-};
-#endif // MAINWINDOW_H
+
+    // Устанавливаем прокси-модель для tableView
+    ui->tableView->setModel(proxyModel);
+    // Включаем сортировку по клику на заголовки столбцов
+    ui->tableView->setSortingEnabled(true);
+}
+
+// Вспомогательная функция для заполнения комбобоксов выбора поля поиска
+void MainWindow::populateSearchComboBox(QComboBox *comboBox)
+{
+    comboBox->clear(); // Очищаем текущие элементы
+    comboBox->addItem("Все поля"); // Опция для поиска по всем полям
+    comboBox->addItem("Автор");
+    comboBox->addItem("Название");
+    comboBox->addItem("Год"); // Опция для поиска по столбцу "Год" (строка даты)
+    comboBox->addItem("Жанр");
+    comboBox->addItem("Издательство");
+    comboBox->addItem("ISBN");
+    comboBox->addItem("Страниц");
+}
+
+// Метод для настройки элементов управления поиском
+void MainWindow::setupSearch()
+{
+    // Заполняем оба комбобокса выбора поля поиска одинаковым списком полей
+    populateSearchComboBox(ui->searchFieldComboBox);
+    populateSearchComboBox(ui->searchFieldComboBox2); // Заполняем второй комбобокс
+}
+
+// Вспомогательная функция для получения индекса столбца исходной модели по его названию заголовка
+int MainWindow::getColumnIndex(const QString &columnTitle) const
+{
+    // Получаем указатель на исходную модель (для надежности)
+    const QStandardItemModel *sourceModel = qobject_cast<const QStandardItemModel *>(proxyModel->sourceModel());
+    if (!sourceModel) return -1; // Если исходная модель недоступна
+
+    // Перебираем заголовки столбцов исходной модели
+    for (int i = 0; i < sourceModel->columnCount(); ++i) {
+        if (sourceModel->headerData(i, Qt::Horizontal).toString() == columnTitle) {
+            return i; // Возвращаем индекс столбца при совпадении заголовка
+        }
+    }
+    return -1; // Если столбец с таким заголовком не найден
+}
+
+// Слот для обработки нажатия кнопки "Поиск"
+// Этот слот обрабатывает оба набора полей поиска и применяет фильтрацию через custom proxy model
+void MainWindow::searchBooks()
+{
+    // Критерий 1: получаем текст поиска и выбранное поле из первого набора виджетов
+    QString searchText1 = ui->searchLineEdit->text();
+    QString selectedField1 = ui->searchFieldComboBox->currentText();
+    int column1 = -1; // По умолчанию -1, означает поиск по всем столбцам
+    if (selectedField1 != "Все поля") {
+        // Если выбрано конкретное поле, получаем его индекс
+        column1 = getColumnIndex(selectedField1);
+    }
+
+    // Критерий 2: получаем текст поиска и выбранное поле из второго набора виджетов
+    QString searchText2 = ui->searchLineEdit2->text(); // Читаем из второго поля ввода текста
+    QString selectedField2 = ui->searchFieldComboBox2->currentText(); // Читаем из второго комбобокса
+    int column2 = -1; // По умолчанию -1, означает поиск по всем столбцам
+    if (selectedField2 != "Все поля") {
+        // Если выбрано конкретное поле, получаем его индекс
+        column2 = getColumnIndex(selectedField2);
+    }
+
+    // Устанавливаем критерии фильтрации в нашей кастомной прокси-модели
+    // Custom proxy model объединит эти два критерия по логике И (AND) в filterAcceptsRow
+    proxyModel->setFilterCriteria1(searchText1, column1);
+    proxyModel->setFilterCriteria2(searchText2, column2);
+
+    // Вызов invalidateFilter() внутри методов setFilterCriteriaX
+    // приводит к повторной фильтрации представления tableView на основе новых критериев
+}
+
+
+// Слот для добавления новой книги
+// Использует EditBookDialog для ввода всех данных, включая дату через календарь
+void MainWindow::addBook()
+{
+    // Создаем экземпляр диалога добавления/редактирования книги
+    EditBookDialog dialog(this);
+    // Инициализация полей диалога значениями по умолчанию для добавления
+    // Устанавливаем текущую дату как значение по умолчанию для поля даты издания
+    dialog.setBookData("", "", QDate::currentDate(), "", "", "", 0);
+
+    // Показываем диалог модально (выполнение приостанавливается до закрытия диалога)
+    if (dialog.exec() == QDialog::Accepted) {
+        // Если пользователь нажал "ОК", получаем введенные данные из диалога
+        QList<QStandardItem *> rowItems;
+        rowItems << new QStandardItem(dialog.getAuthor())
+                 << new QStandardItem(dialog.getTitle())
+                 // Получаем QDate из диалога и преобразуем ее в строку формата "yyyy-MM-dd"
+                 // Сохраняем эту строку в QStandardItem для столбца "Год"
+                 << new QStandardItem(dialog.getPublishDate().toString("yyyy-MM-dd"))
+                 << new QStandardItem(dialog.getGenre())
+                 << new QStandardItem(dialog.getPublisher())
+                 << new QStandardItem(dialog.getISBN())
+                 << new QStandardItem(QString::number(dialog.getPageCount()));
+
+        // Добавляем новую строку с элементами в исходную модель данных
+        model->appendRow(rowItems);
+        QMessageBox::information(this, "Успех", "Книга успешно добавлена!");
+    }
+    // Если пользователь нажал "Отмена" (exec() != QDialog::Accepted), ничего не делаем
+}
+
+
+// Слот для редактирования выбранной книги
+// Использует EditBookDialog для изменения данных
+void MainWindow::editBook()
+{
+    // Получаем текущий выбранный индекс из представления (tableView), которое использует proxyModel
+    QModelIndex index = ui->tableView->currentIndex();
+    if (!index.isValid()) {
+        QMessageBox::warning(this, "Ошибка", "Выберите книгу для редактирования");
+        return; // Если ничего не выбрано, выходим
+    }
+
+    // Преобразуем индекс из proxyModel в соответствующий индекс в исходной модели (model)
+    // Это важно, так как фильтрация или сортировка могли изменить порядок строк
+    QModelIndex sourceIndex = proxyModel->mapToSource(index);
+    if (!sourceIndex.isValid()) {
+        // Это сообщение об ошибке маловероятно, если исходный индекс валиден, но добавлено для надежности
+        QMessageBox::warning(this, "Ошибка", "Не удалось найти запись в исходных данных.");
+        return;
+    }
+
+    // Получаем номер строки в исходной модели
+    int row = sourceIndex.row();
+
+    // Извлекаем текущие данные книги из исходной модели по номеру строки
+    QString author = model->item(row, 0)->text();
+    QString title = model->item(row, 1)->text();
+
+    // Извлекаем строку даты из столбца "Год" и преобразуем ее в QDate для диалога
+    // Используем getColumnIndex("Год") для надежного получения индекса столбца даты
+    QString dateString = model->item(row, getColumnIndex("Год"))->text();
+    QDate publishDate = QDate::fromString(dateString, "yyyy-MM-dd");
+    // Если строка даты в модели некорректна, используем текущую дату или невалидную QDate()
+    if (!publishDate.isValid()) {
+        qDebug() << "Некорректная строка даты в модели для редактирования:" << dateString << ". Используется текущая дата.";
+        publishDate = QDate::currentDate(); // Или QDate() - невалидная дата
+    }
+
+    QString genre = model->item(row, 3)->text();
+    // Получаем данные из новых столбцов, предварительно проверяя, существуют ли эти столбцы
+    QString publisher = (model->columnCount() > getColumnIndex("Издательство") && model->item(row, getColumnIndex("Издательство"))) ? model->item(row, getColumnIndex("Издательство"))->text() : "";
+    QString isbn = (model->columnCount() > getColumnIndex("ISBN") && model->item(row, getColumnIndex("ISBN"))) ? model->item(row, getColumnIndex("ISBN"))->text() : "";
+    int pageCount = (model->columnCount() > getColumnIndex("Страниц") && model->item(row, getColumnIndex("Страниц"))) ? model->item(row, getColumnIndex("Страниц"))->text().toInt() : 0;
+
+
+    // Создаем экземпляр диалога редактирования книги
+    EditBookDialog dialog(this);
+    // Устанавливаем текущие данные книги в поля диалога
+    dialog.setBookData(author, title, publishDate, genre, publisher, isbn, pageCount);
+
+    // Показываем диалог модально
+    if (dialog.exec() == QDialog::Accepted) {
+        // Если пользователь нажал "ОК", получаем измененные данные из диалога
+        // И обновляем соответствующие элементы в исходной модели по тому же номеру строки
+        model->setItem(row, 0, new QStandardItem(dialog.getAuthor()));
+        model->setItem(row, 1, new QStandardItem(dialog.getTitle()));
+        // Получаем QDate из диалога и сохраняем ее как строку "yyyy-MM-dd" в столбец "Год"
+        model->setItem(row, getColumnIndex("Год"), new QStandardItem(dialog.getPublishDate().toString("yyyy-MM-dd")));
+        model->setItem(row, 3, new QStandardItem(dialog.getGenre()));
+        model->setItem(row, 4, new QStandardItem(dialog.getPublisher()));
+        model->setItem(row, 5, new QStandardItem(dialog.getISBN()));
+        model->setItem(row, 6, new QStandardItem(QString::number(dialog.getPageCount())));
+    }
+    // Если пользователь нажал "Отмена", изменения не применяются
+}
+
+
+// Слот для удаления выбранной книги
+void MainWindow::removeBook()
+{
+    // Получаем текущий выбранный индекс из представления (tableView)
+    QModelIndex index = ui->tableView->currentIndex();
+    if (!index.isValid()) {
+        QMessageBox::warning(this, "Ошибка", "Выберите книгу для удаления");
+        return; // Если ничего не выбрано, выходим
+    }
+
+    // Преобразуем индекс из proxyModel в соответствующий индекс в исходной модели
+    QModelIndex sourceIndex = proxyModel->mapToSource(index);
+    if (sourceIndex.isValid()) {
+        // Удаляем строку из исходной модели по номеру строки из sourceIndex
+        model->removeRow(sourceIndex.row());
+    }
+}
+
+
+// Слот для экспорта данных каталога в формат CSV
+void MainWindow::exportCSV()
+{
+    // Открываем диалог сохранения файла для выбора имени файла и пути
+    QString fileName = QFileDialog::getSaveFileName(this, "Экспорт в CSV", "", "CSV Files (*.csv)");
+    if (fileName.isEmpty()) {
+        return; // Если пользователь отменил диалог, выходим
+    }
+
+    // Убеждаемся, что имя файла заканчивается на .csv
+    if (!fileName.endsWith(".csv", Qt::CaseInsensitive)) {
+        fileName += ".csv";
+    }
+
+    QFile file(fileName);
+    // Пытаемся открыть файл для записи в текстовом режиме
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        QMessageBox::warning(this, "Ошибка", "Не удалось сохранить файл:\n" + file.errorString());
+        return; // Если не удалось открыть файл, выводим ошибку и выходим
+    }
+
+    QTextStream out(&file); // Создаем текстовый поток для записи в файл
+
+    // Записываем заголовки столбцов в первую строку CSV файла
+    QStringList headers;
+    for (int col = 0; col < model->columnCount(); ++col) {
+        QString headerText = model->headerData(col, Qt::Horizontal).toString();
+        // Экранируем кавычки внутри текста заголовка, если они есть
+        headerText.replace("\"", "\"\"");
+        // Оборачиваем заголовок в кавычки на случай наличия запятых или других спецсимволов
+        headers.append('"' + headerText + '"');
+    }
+    out << headers.join(",") << "\n"; // Соединяем заголовки запятыми и добавляем перевод строки
+
+    // Записываем данные каждой строки из модели
+    for (int row = 0; row < model->rowCount(); ++row) {
+        QStringList fields; // Список полей для текущей строки
+        for (int col = 0; col < model->columnCount(); ++col) {
+            QString text = model->item(row, col)->text(); // Получаем текст из элемента модели
+            // Экранируем кавычки внутри текста поля, если они есть
+            text.replace("\"", "\"\"");
+            // Оборачиваем текст поля в кавычки для надежности
+            fields.append('"' + text + '"');
+        }
+        out << fields.join(",") << "\n"; // Соединяем поля строки запятыми и добавляем перевод строки
+    }
+
+    file.close(); // Закрываем файл
+    QMessageBox::information(this, "Экспорт", "Файл сохранён успешно!"); // Сообщаем об успешном сохранении
+}
+
+
+// Слот для импорта данных каталога из формата CSV
+void MainWindow::importCSV()
+{
+    // Открываем диалог открытия файла для выбора CSV файла
+    QString fileName = QFileDialog::getOpenFileName(this, "Импорт CSV", "", "CSV Files (*.csv)");
+    if (fileName.isEmpty()) {
+        return; // Если пользователь отменил диалог, выходим
+    }
+
+    QFile file(fileName);
+    // Пытаемся открыть файл для чтения в текстовом режиме
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        QMessageBox::warning(this, "Ошибка", "Не удалось открыть файл:\n" + file.errorString());
+        return; // Если не удалось открыть файл, выводим ошибку и выходим
+    }
+
+    QTextStream in(&file); // Создаем текстовый поток для чтения из файла
+    // Очищаем текущие данные в модели перед загрузкой новых
+    model->clear();
+    // Настраиваем модель заново (устанавливаем заголовки и кол-во столбцов, как после запуска)
+    setupModel();
+
+    // Пропускаем первую строку, предполагая, что это строка заголовков
+    if (!in.atEnd()) {
+        in.readLine();
+    }
+
+    int rowCount = 0; // Счетчик успешно импортированных строк
+    // Читаем файл построчно до конца
+    while (!in.atEnd()) {
+        QString line = in.readLine();
+        // Простой парсинг CSV строки по запятой с учетом кавычек и экранирования кавычек
+        QStringList fields;
+        QString currentField;
+        bool inQuotes = false;
+        for (int i = 0; i < line.length(); ++i) {
+            QChar c = line.at(i);
+            if (c == '"') {
+                // Если следующая кавычка тоже кавычка, это экранированная кавычка внутри поля
+                if (i + 1 < line.length() && line.at(i+1) == '"') {
+                    currentField += '"'; // Добавляем одну кавычку к текущему полю
+                    i++; // Пропускаем следующую кавычку
+                } else {
+                    inQuotes = !inQuotes; // Иначе это открывающая/закрывающая кавычка поля
+                }
+            } else if (c == ',' && !inQuotes) {
+                // Если нашли запятую не внутри кавычек, это разделитель полей
+                fields.append(currentField); // Добавляем текущее поле в список
+                currentField.clear(); // Очищаем буфер для следующего поля
+            } else {
+                // Обычный символ поля
+                currentField += c;
+            }
+        }
+        fields.append(currentField); // Добавляем последнее поле после цикла
+
+        // Проверяем, совпадает ли количество полей в прочитанной строке с количеством столбцов в модели
+        if (fields.size() != model->columnCount()) {
+             qDebug() << "Пропущена строка импорта из-за некорректного количества полей (" << fields.size() << " вместо " << model->columnCount() << "):" << line;
+            continue; // Пропускаем строки с некорректным количеством полей
+        }
+
+        // Создаем список QStandardItem для новой строки в модели
+        QList<QStandardItem *> rowItems;
+        for (const QString &field : fields) {
+             // Обрезаем пробелы в начале и конце каждого поля
+             QString trimmedField = field.trimmed();
+             // Если поля были заключены в кавычки, удаляем их (опционально, зависит от точности парсинга)
+             // if (trimmedField.startsWith('"') && trimmedField.endsWith('"')) {
+             //     trimmedField = trimmedField.mid(1, trimmedField.length() - 2);
+             //     trimmedField.replace("\"\"", "\""); // Обрабатываем экранированные кавычки внутри поля
+             // }
+
+            rowItems.append(new QStandardItem(trimmedField)); // Добавляем элемент в список
+        }
+
+        // Добавляем новую строку с элементами в исходную модель
+        model->appendRow(rowItems);
+        rowCount++; // Увеличиваем счетчик импортированных строк
+    }
+
+    file.close(); // Закрываем файл
+
+    // Выводим сообщение о результате импорта
+    if (rowCount == 0 && !in.atEnd()) { // Проверяем, были ли строки в файле, но ни одна не импортирована
+        QMessageBox::information(this, "Импорт CSV", "Файл загружен, но ни одна запись не была корректно импортирована (возможно, из-за некорректного формата строк).");
+    } else if (rowCount == 0) { // Файл был пуст
+         QMessageBox::information(this, "Импорт CSV", "Файл загружен, но он пуст.");
+    }
+    else { // Успешный импорт
+        QMessageBox::information(this, "Импорт CSV", QString("Успешно загружено %1 записей из файла: %2").arg(rowCount).arg(fileName));
+    }
+}
+
+
+// Слот для экспорта данных каталога в формат JSON
+void MainWindow::exportJSON()
+{
+    // Открываем диалог сохранения файла для выбора имени файла и пути
+    QString fileName = QFileDialog::getSaveFileName(this, "Экспорт в JSON", "", "JSON Files (*.json)");
+    if (fileName.isEmpty()) {
+        return; // Если пользователь отменил диалог
+    }
+
+    // Убеждаемся, что имя файла заканчивается на .json
+    if (!fileName.endsWith(".json", Qt::CaseInsensitive)) {
+        fileName += ".json";
+    }
+
+    QFile file(fileName);
+    // Пытаемся открыть файл для записи в текстовом режиме
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        QMessageBox::warning(this, "Ошибка", "Не удалось сохранить файл:\n" + file.errorString());
+        return; // Если не удалось открыть файл
+    }
+
+    QJsonArray bookList; // Создаем JSON массив для хранения объектов книг
+    // Перебираем строки исходной модели данных
+    for (int row = 0; row < model->rowCount(); ++row) {
+        QJsonObject bookObject; // Создаем JSON объект для текущей книги
+        // Заполняем JSON объект данными из каждого столбца
+        // Используем названия столбцов как ключи в JSON
+        bookObject["Автор"] = model->item(row, getColumnIndex("Автор"))->text();
+        bookObject["Название"] = model->item(row, getColumnIndex("Название"))->text();
+        // Сохраняем дату (которая хранится как строка "yyyy-MM-dd") под ключом "Год" в JSON
+        bookObject["Год"] = model->item(row, getColumnIndex("Год"))->text();
+        bookObject["Жанр"] = model->item(row, getColumnIndex("Жанр"))->text();
+        bookObject["Издательство"] = model->item(row, getColumnIndex("Издательство"))->text();
+        bookObject["ISBN"] = model->item(row, getColumnIndex("ISBN"))->text();
+        // Преобразуем текст из столбца "Страниц" в число для JSON
+        bookObject["Страниц"] = model->item(row, getColumnIndex("Страниц"))->text().toInt();
+
+
+        bookList.append(bookObject); // Добавляем сформированный объект книги в JSON массив
+    }
+
+    QJsonDocument jsonDoc(bookList); // Создаем JSON документ из массива книг
+    // Записываем JSON документ в файл. QJsonDocument::Indented обеспечивает красивое форматирование.
+    file.write(jsonDoc.toJson(QJsonDocument::Indented));
+
+    file.close(); // Закрываем файл
+    QMessageBox::information(this, "Экспорт", "Файл сохранён успешно!"); // Сообщаем об успехе
+}
+
+
+// Слот для импорта данных каталога из формата JSON
+void MainWindow::importJSON()
+{
+    // Открываем диалог открытия файла для выбора JSON файла
+    QString fileName = QFileDialog::getOpenFileName(this, "Импорт JSON", "", "JSON Files (*.json)");
+    if (fileName.isEmpty()) {
+        return; // Если пользователь отменил диалог
+    }
+
+    QFile file(fileName);
+    // Пытаемся открыть файл для чтения в текстовом режиме
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        QMessageBox::warning(this, "Ошибка", "Не удалось открыть файл:\n" + file.errorString());
+        return; // Если не удалось открыть файл
+    }
+
+    // Читаем все данные из файла
+    QByteArray jsonData = file.readAll();
+    file.close();
+
+    // Парсим JSON данные из QByteArray
+    QJsonDocument jsonDoc = QJsonDocument::fromJson(jsonData);
+
+    // Проверяем, является ли корневой элемент JSON документом массивом
+    if (!jsonDoc.isArray()) {
+        QMessageBox::warning(this, "Ошибка импорта", "Файл JSON имеет некорректный формат (ожидается массив JSON).");
+        return;
+    }
+
+    // Очищаем текущие данные в модели перед загрузкой новых
+    model->clear();
+    // Настраиваем модель заново (устанавливаем заголовки и кол-во столбцов)
+    setupModel();
+
+    // Получаем JSON массив из документа
+    QJsonArray bookList = jsonDoc.array();
+    int rowCount = 0; // Счетчик успешно импортированных строк
+    // Перебираем каждый элемент в JSON массиве (каждый элемент - это JSON объект, представляющий книгу)
+    for (const QJsonValue &value : bookList) {
+        // Проверяем, является ли текущий элемент JSON объектом
+        if (value.isObject()) {
+            QJsonObject bookObject = value.toObject(); // Преобразуем JSON элемент в JSON объект
+
+            // Извлекаем данные из JSON объекта по ключам, соответствующим названиям полей
+            QString author = bookObject.value("Автор").toString();
+            QString title = bookObject.value("Название").toString();
+            // Читаем строку даты из ключа "Год"
+            QString publishDateString = bookObject.value("Год").toString();
+            // Опционально: Можем проверить валидность строки даты, хотя для хранения как строки это не строго необходимо
+            QDate publishDate = QDate::fromString(publishDateString, "yyyy-MM-dd");
+            if (!publishDate.isValid() && !publishDateString.isEmpty()) {
+                qDebug() << "Предупреждение: Некорректная строка даты в JSON для ключа 'Год':" << publishDateString << ". Используется пустая строка.";
+                publishDateString = ""; // Если дата невалидна, используем пустую строку
+            }
+
+
+            QString genre = bookObject.value("Жанр").toString();
+            QString publisher = bookObject.value("Издательство").toString();
+            QString isbn = bookObject.value("ISBN").toString();
+            // Читаем число страниц из JSON. toInt() вернет 0, если ключ не существует или значение не число.
+            int pageCount = bookObject.value("Страниц").toInt();
+
+
+             // Базовая валидация: проверяем наличие обязательных полей перед добавлением строки
+             if (author.isEmpty() || title.isEmpty() || genre.isEmpty() || publishDateString.isEmpty()) {
+                 qDebug() << "Пропуск записи из JSON из-за отсутствия обязательных полей.";
+                 continue; // Пропускаем эту запись, если обязательные поля пусты
+            }
+
+
+            // Создаем список QStandardItem для новой строки в модели
+            QList<QStandardItem *> rowItems;
+            rowItems << new QStandardItem(author)
+                     << new QStandardItem(title)
+                     << new QStandardItem(publishDateString) // Сохраняем дату как строку "yyyy-MM-dd"
+                     << new QStandardItem(genre)
+                     << new QStandardItem(publisher)
+                     << new QStandardItem(isbn)
+                     // Сохраняем число страниц как строку в QStandardItem
+                     << new QStandardItem(QString::number(pageCount));
+
+            // Добавляем новую строку в исходную модель данных
+            model->appendRow(rowItems);
+            rowCount++; // Увеличиваем счетчик импортированных строк
+        }
+    }
+
+    // Выводим сообщение о результате импорта
+    if (rowCount == 0 && !bookList.isEmpty()) { // Если в файле были объекты, но ни один не импортирован
+        QMessageBox::information(this, "Импорт JSON", "Файл загружен, но ни одна запись не была корректно импортирована (возможно, из-за отсутствия обязательных полей или некорректного формата объектов).");
+    } else if (rowCount == 0) { // Если файл был пуст или не содержал объектов
+         QMessageBox::information(this, "Импорт JSON", "Файл загружен, но он пуст или содержит некорректные данные.");
+    }
+    else { // Успешный импорт
+        QMessageBox::information(this, "Импорт JSON", QString("Успешно загружено %1 записей из файла: %2").arg(rowCount).arg(fileName));
+    }
+}
