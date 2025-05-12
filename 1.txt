@@ -1,5 +1,55 @@
-/home/user/BookCatalog/editbookdialog.cpp:42: ошибка: ‘QLineEdit* QAbstractSpinBox::lineEdit() const’ is protected within this context
-/home/user/BookCatalog/editbookdialog.cpp: In member function ‘void EditBookDialog::setupUi()’:
-/home/user/BookCatalog/editbookdialog.cpp:42:34: error: ‘QLineEdit* QAbstractSpinBox::lineEdit() const’ is protected within this context
-   42 |     if (publishDateEdit->lineEdit()) {
-      |         ~~~~~~~~~~~~~~~~~~~~~~~~~^~
+#include <QDateEdit> // Make sure this is included if not implicitly by editbookdialog.h
+#include <QSpinBox>  // Make sure this is included
+#include <QVBoxLayout> // Make sure this is included
+#include <QDialogButtonBox> // Make sure this is included
+
+void EditBookDialog::setupUi()
+{
+    QVBoxLayout *mainLayout = new QVBoxLayout(this);
+    QFormLayout *formLayout = new QFormLayout();
+
+    authorLineEdit = new QLineEdit();
+    titleLineEdit = new QLineEdit();
+    publishDateEdit = new QDateEdit(); // QDateEdit is a QAbstractSpinBox
+    genreLineEdit = new QLineEdit();
+    publisherLineEdit = new QLineEdit();
+    isbnLineEdit = new QLineEdit();
+    pageCountSpinBox = new QSpinBox();
+
+    // Настройка QDateEdit
+    publishDateEdit->setCalendarPopup(true);
+    publishDateEdit->setDisplayFormat("yyyy-MM-dd");
+    publishDateEdit->setDate(QDate::currentDate());
+
+    // Отключаем кнопки-стрелки
+    publishDateEdit->setButtonSymbols(QAbstractSpinBox::NoButtons);
+
+    // *** Устанавливаем event filter на сам QDateEdit для блокировки клавиатурного ввода ***
+    publishDateEdit->installEventFilter(this);
+    // The problematic block below should be removed:
+    // if (publishDateEdit->lineEdit()) { // This line caused the error
+    //     publishDateEdit->lineEdit()->installEventFilter(this);
+    // }
+
+    // Настройка QSpinBox для количества страниц
+    pageCountSpinBox->setRange(0, 10000);
+
+    // Добавление виджетов в слой формы с соответствующими метками
+    formLayout->addRow("Автор:", authorLineEdit);
+    formLayout->addRow("Название:", titleLineEdit);
+    formLayout->addRow("Дата издания:", publishDateEdit);
+    formLayout->addRow("Жанр:", genreLineEdit);
+    formLayout->addRow("Издательство:", publisherLineEdit);
+    formLayout->addRow("ISBN:", isbnLineEdit);
+    formLayout->addRow("Количество страниц:", pageCountSpinBox);
+
+    // Создание стандартных кнопок OK и Cancel
+    buttonBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
+
+    // Добавление слоев в основной слой диалога
+    mainLayout->addLayout(formLayout);
+    mainLayout->addWidget(buttonBox);
+
+    setLayout(mainLayout);
+    setWindowTitle("Редактировать книгу");
+}
