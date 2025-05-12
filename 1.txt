@@ -1,25 +1,45 @@
-// editbookdialog.cpp
+// editbookdialog.h
+#ifndef EDITBOOKDIALOG_H
+#define EDITBOOKDIALOG_H
 
-// Реализация eventFilter для блокировки клавиатурного ввода в QDateEdit
-bool EditBookDialog::eventFilter(QObject *watched, QEvent *event)
+#include <QDialog>
+// Forward declarations for Qt classes used in the header
+class QLineEdit;
+class QDateEdit;
+class QSpinBox;
+class QDialogButtonBox;
+
+class EditBookDialog : public QDialog
 {
-    // Проверяем, что событие предназначено для publishDateEdit
-    if (watched == publishDateEdit) {
-        // Если событие - это нажатие клавиши
-        if (event->type() == QEvent::KeyPress) {
-            // QKeyEvent *keyEvent = static_cast<QKeyEvent *>(event); // You can use this for specific key logic if needed
-            // Отладочное сообщение: qDebug() << "Intercepted key press on QDateEdit:" << keyEvent->key();
+    Q_OBJECT // Important for signals, slots, and event filters
 
-            // Возвращаем true, чтобы "потребить" (игнорировать) событие.
-            // Это предотвратит ввод текста и изменение даты с клавиатуры в QDateEdit.
-            return true;
-        }
-        // Можно также перехватить QEvent::Wheel для отключения изменения даты с помощью колеса мыши, если нужно
-        // if (event->type() == QEvent::Wheel) {
-        //     return true; // Consume wheel event
-        // }
-    }
+public:
+    explicit EditBookDialog(QWidget *parent = nullptr);
+    ~EditBookDialog();
 
-    // Для всех остальных объектов и типов событий, передаем событие дальше для обычной обработки
-    return QDialog::eventFilter(watched, event);
-}
+    // Add getters if you need to retrieve the data from the dialog
+    // QString author() const;
+    // ... etc.
+
+protected:
+    // Declare the event filter method
+    bool eventFilter(QObject *watched, QEvent *event) override; // Added override
+
+private slots:
+    void on_buttonBox_accepted();
+    // void on_buttonBox_rejected(); // This is connected to QDialog::reject directly
+
+private:
+    void setupUi();
+
+    QLineEdit *authorLineEdit;
+    QLineEdit *titleLineEdit;
+    QDateEdit *publishDateEdit;
+    QLineEdit *genreLineEdit;
+    QLineEdit *publisherLineEdit;
+    QLineEdit *isbnLineEdit;
+    QSpinBox *pageCountSpinBox;
+    QDialogButtonBox *buttonBox;
+};
+
+#endif // EDITBOOKDIALOG_H
