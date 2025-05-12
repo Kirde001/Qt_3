@@ -1,55 +1,25 @@
-#include <QDateEdit> // Make sure this is included if not implicitly by editbookdialog.h
-#include <QSpinBox>  // Make sure this is included
-#include <QVBoxLayout> // Make sure this is included
-#include <QDialogButtonBox> // Make sure this is included
+// editbookdialog.cpp
 
-void EditBookDialog::setupUi()
+// Реализация eventFilter для блокировки клавиатурного ввода в QDateEdit
+bool EditBookDialog::eventFilter(QObject *watched, QEvent *event)
 {
-    QVBoxLayout *mainLayout = new QVBoxLayout(this);
-    QFormLayout *formLayout = new QFormLayout();
+    // Проверяем, что событие предназначено для publishDateEdit
+    if (watched == publishDateEdit) {
+        // Если событие - это нажатие клавиши
+        if (event->type() == QEvent::KeyPress) {
+            // QKeyEvent *keyEvent = static_cast<QKeyEvent *>(event); // You can use this for specific key logic if needed
+            // Отладочное сообщение: qDebug() << "Intercepted key press on QDateEdit:" << keyEvent->key();
 
-    authorLineEdit = new QLineEdit();
-    titleLineEdit = new QLineEdit();
-    publishDateEdit = new QDateEdit(); // QDateEdit is a QAbstractSpinBox
-    genreLineEdit = new QLineEdit();
-    publisherLineEdit = new QLineEdit();
-    isbnLineEdit = new QLineEdit();
-    pageCountSpinBox = new QSpinBox();
+            // Возвращаем true, чтобы "потребить" (игнорировать) событие.
+            // Это предотвратит ввод текста и изменение даты с клавиатуры в QDateEdit.
+            return true;
+        }
+        // Можно также перехватить QEvent::Wheel для отключения изменения даты с помощью колеса мыши, если нужно
+        // if (event->type() == QEvent::Wheel) {
+        //     return true; // Consume wheel event
+        // }
+    }
 
-    // Настройка QDateEdit
-    publishDateEdit->setCalendarPopup(true);
-    publishDateEdit->setDisplayFormat("yyyy-MM-dd");
-    publishDateEdit->setDate(QDate::currentDate());
-
-    // Отключаем кнопки-стрелки
-    publishDateEdit->setButtonSymbols(QAbstractSpinBox::NoButtons);
-
-    // *** Устанавливаем event filter на сам QDateEdit для блокировки клавиатурного ввода ***
-    publishDateEdit->installEventFilter(this);
-    // The problematic block below should be removed:
-    // if (publishDateEdit->lineEdit()) { // This line caused the error
-    //     publishDateEdit->lineEdit()->installEventFilter(this);
-    // }
-
-    // Настройка QSpinBox для количества страниц
-    pageCountSpinBox->setRange(0, 10000);
-
-    // Добавление виджетов в слой формы с соответствующими метками
-    formLayout->addRow("Автор:", authorLineEdit);
-    formLayout->addRow("Название:", titleLineEdit);
-    formLayout->addRow("Дата издания:", publishDateEdit);
-    formLayout->addRow("Жанр:", genreLineEdit);
-    formLayout->addRow("Издательство:", publisherLineEdit);
-    formLayout->addRow("ISBN:", isbnLineEdit);
-    formLayout->addRow("Количество страниц:", pageCountSpinBox);
-
-    // Создание стандартных кнопок OK и Cancel
-    buttonBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
-
-    // Добавление слоев в основной слой диалога
-    mainLayout->addLayout(formLayout);
-    mainLayout->addWidget(buttonBox);
-
-    setLayout(mainLayout);
-    setWindowTitle("Редактировать книгу");
+    // Для всех остальных объектов и типов событий, передаем событие дальше для обычной обработки
+    return QDialog::eventFilter(watched, event);
 }
