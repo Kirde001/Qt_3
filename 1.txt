@@ -1,123 +1,47 @@
 еще один поиск филтьтр
 дата издания а не год, ввод календарем
 
-#include "editbookdialog.h"
-#include <QFormLayout>
-#include <QMessageBox>
+#ifndef MAINWINDOW_H
+#define MAINWINDOW_H
+
+#include <QMainWindow>
+#include <QStandardItemModel>
+#include <QSortFilterProxyModel>
+#include <QComboBox>
 #include <QDate> // Добавляем
 
-EditBookDialog::EditBookDialog(QWidget *parent)
-    : QDialog(parent)
+QT_BEGIN_NAMESPACE
+namespace Ui { class MainWindow; }
+QT_END_NAMESPACE
+
+class EditBookDialog;
+
+class MainWindow : public QMainWindow
 {
-    setupUi();
-    connect(buttonBox, &QDialogButtonBox::accepted, this, &EditBookDialog::on_buttonBox_accepted);
-    connect(buttonBox, &QDialogButtonBox::rejected, this, &QDialog::reject);
-}
+    Q_OBJECT
 
-EditBookDialog::~EditBookDialog()
-{
-}
+public:
+    MainWindow(QWidget *parent = nullptr);
+    ~MainWindow();
 
-void EditBookDialog::setupUi()
-{
-    QVBoxLayout *mainLayout = new QVBoxLayout(this);
-    QFormLayout *formLayout = new QFormLayout();
+private slots:
+    void addBook();
+    void editBook();
+    void removeBook();
+    void searchBooks(); // Общий поиск
+    void searchBooksByDate(); // Слот для поиска по дате
+    void importCSV();
+    void exportCSV();
+    void importJSON();
+    void exportJSON();
 
-    authorLineEdit = new QLineEdit();
-    titleLineEdit = new QLineEdit();
-    publishDateEdit = new QDateEdit(); // Инициализируем QDateEdit
-    genreLineEdit = new QLineEdit();
-    publisherLineEdit = new QLineEdit();
-    isbnLineEdit = new QLineEdit();
-    pageCountSpinBox = new QSpinBox();
+private:
+    Ui::MainWindow *ui;
+    QStandardItemModel *model;
+    QSortFilterProxyModel *proxyModel;
+    void setupModel();
+    void setupSearch();
+    int getColumnIndex(const QString &columnTitle) const;
+};
 
-    publishDateEdit->setCalendarPopup(true);
-    publishDateEdit->setDisplayFormat("yyyy-MM-dd"); // Формат для отображения и сохранения
-    publishDateEdit->setDate(QDate::currentDate());
-
-    pageCountSpinBox->setRange(0, 10000);
-
-    formLayout->addRow("Автор:", authorLineEdit);
-    formLayout->addRow("Название:", titleLineEdit);
-    formLayout->addRow("Дата издания:", publishDateEdit); // Лейбл в диалоге
-    formLayout->addRow("Жанр:", genreLineEdit);
-    formLayout->addRow("Издательство:", publisherLineEdit);
-    formLayout->addRow("ISBN:", isbnLineEdit);
-    formLayout->addRow("Количество страниц:", pageCountSpinBox);
-
-    buttonBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
-
-    mainLayout->addLayout(formLayout);
-    mainLayout->addWidget(buttonBox);
-
-    setLayout(mainLayout);
-    setWindowTitle("Редактировать книгу");
-}
-
-bool EditBookDialog::validateInput()
-{
-    if (authorLineEdit->text().isEmpty() ||
-        titleLineEdit->text().isEmpty() ||
-        genreLineEdit->text().isEmpty() ||
-        publisherLineEdit->text().isEmpty() ||
-        !publishDateEdit->date().isValid())
-    {
-        QMessageBox::warning(this, "Ошибка валидации", "Обязательные поля (Автор, Название, Дата издания, Жанр, Издательство) должны быть заполнены и дата корректна.");
-        return false;
-    }
-    return true;
-}
-
-void EditBookDialog::on_buttonBox_accepted()
-{
-    if (validateInput()) {
-        accept();
-    }
-}
-
-QString EditBookDialog::getAuthor() const
-{
-    return authorLineEdit->text();
-}
-
-QString EditBookDialog::getTitle() const
-{
-    return titleLineEdit->text();
-}
-
-QDate EditBookDialog::getPublishDate() const
-{
-    return publishDateEdit->date();
-}
-
-QString EditBookDialog::getGenre() const
-{
-    return genreLineEdit->text();
-}
-
-QString EditBookDialog::getPublisher() const
-{
-    return publisherLineEdit->text();
-}
-
-QString EditBookDialog::getISBN() const
-{
-    return isbnLineEdit->text();
-}
-
-int EditBookDialog::getPageCount() const
-{
-    return pageCountSpinBox->value();
-}
-
-void EditBookDialog::setBookData(const QString &author, const QString &title, const QDate &publishDate, const QString &genre,
-                                 const QString &publisher, const QString &isbn, int pageCount)
-{
-    authorLineEdit->setText(author);
-    titleLineEdit->setText(title);
-    publishDateEdit->setDate(publishDate);
-    genreLineEdit->setText(genre);
-    publisherLineEdit->setText(publisher);
-    isbnLineEdit->setText(isbn);
-    pageCountSpinBox->setValue(pageCount);
-}
+#endif // MAINWINDOW_H
